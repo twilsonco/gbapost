@@ -1,0 +1,17 @@
+I: Electron Density SCF
+I: Volume
+I: Kinetic Energy Density SCF
+I: Electron Localization Function SCF
+I: Valence density
+I: Area Bader charge
+I: Deformation charge
+I: Deformation volume
+I: Deformation (kinetic) energy
+I: Deformation positive charge
+I: Deformation negative charge
+I: Deformation positive volume
+I: Deformation negative volume
+I: Deformation (kinetic) positive energy
+I: Deformation (kinetic) negative energy
+I: Solid angle (alpha)
+I: Te per electron

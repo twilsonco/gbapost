@@ -1,0 +1,50 @@
+[EEF X-] cis-1-3-butadiene_EEF00125-xMinus_SP --> cis-1-3-butadiene_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C2 --> C2
+C4 --> C1 --> C1
+H1 --> H5 --> H5
+H2 --> H6 --> H6
+H3 --> H4 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
+
+[EEF X+] cis-1-3-butadiene_EEF00125-xPlus_SP --> cis-1-3-butadiene_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C2 --> C2
+C4 --> C1 --> C1
+H1 --> H5 --> H5
+H2 --> H6 --> H6
+H3 --> H4 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
+
+[EEF Z] cis-1-3-butadiene_EEF00125-z_SP --> cis-1-3-butadiene_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C2 --> C2
+C4 --> C1 --> C1
+H1 --> H5 --> H5
+H2 --> H6 --> H6
+H3 --> H4 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
+
+[NEF] cis-1-3-butadiene_SP
+
+[EEF Y] cis-1-3-butadiene_EEF00125-y_SP --> cis-1-3-butadiene_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C3 --> C2
+C4 --> C4 --> C1
+H1 --> H1 --> H5
+H2 --> H2 --> H6
+H3 --> H3 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
+
