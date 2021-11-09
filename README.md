@@ -158,4 +158,4 @@ Here’s a simplified partial example of the output that would be produced using
 			- Any unmapped max/min basins indicate a different *number* of max/min basins between the systems and provides a starting place to look at in case results don’t make sense. Typically if this occurs, the unmapped regions represent a very small amount of the integrated properties.
 - Note how the system nicknames I specified in the atom association step are used extensively to make the output more readable and require less touching up in order to inspect/publish
 
-Thank you, and please reach out to Tim Wilson at twilson@mines.edu if you have any questions!
+Thank you, and please reach out to Tim Wilson at twilson @t mines <dot> edu if you have any questions!
