@@ -15,15 +15,13 @@ We’ll use cis-1,3-butadiene as a quick example.
 ## 1) Setting up the system
 The neutral molecule has a mirror plane (XZ), so only the atoms on the right need be analyzed with GBA. When an external electric field in the Y direction, the mirror symmetry is broken, and all atoms need to be analyzed.
 
-
+![mol](https://user-images.githubusercontent.com/74572736/140985383-3120b4b4-1074-413e-bd6f-1af4f367afc3.png)
 
 We can still perform an analysis on the full molecule by specifying a logical mapping of atoms in the final systems to atoms of the initial system. This also recovers the special gradient bundles present between pointer atoms. For example, in this system, only one C–C bond is fully present (C1–C2), but we will also recover the C2–C3 and C3–C4 bonds, and the rest.
 
 After running GBA on the atoms shown, open the GBA dialog “results” tab, select the condensed charge density “INS: Electron Charge Density” in the variable list, and click “find special gradient bundles”. You can do this multiple times to generate the special gradient bundle decompositions based on several condensed variables. Once this completes, select ​*MTG\_Utilities → Export gradient bundle integration data.*​ Select **at least** atomic basins, special gradient bundles, and max/min condensed basins for export.
 
-
-
-
+![PhotoCollage](https://user-images.githubusercontent.com/74572736/140985607-5f724196-e7bc-4b7a-a13c-2f656354bf3c.png)
 
 ---
 
@@ -34,53 +32,74 @@ After running GBA on the atoms shown, open the GBA dialog “results” tab, sel
 3. Specify which system is to be the initial system
 4. The tool prepares a guess input file to specify atomic associations between files. This file needs to be edited and saved to specify the actual atom associations.
 	- Here's the partial contents of the file originally:
-
 ```
 ...
-```
 
- ```
-[cis-1-3-butadiene\_EEF00125-y\_SP] cis-1-3-butadiene\_EEF00125-y\_SP --> cis-1-3-butadiene\_SP C1 --> C1 --> C1 C2 --> C2 --> C2 C3 --> C3 --> C3 C4 --> C4 --> C4 H1 --> H1 --> H1 H2 --> H2 --> H2 H3 --> H3 --> H3 H4 --> H4 --> H4 H5 --> H5 --> H5 H6 --> H6 --> H6
-```
+[cis-1-3-butadiene\_EEF00125-y\_SP] cis-1-3-butadiene\_EEF00125-y\_SP --> cis-1-3-butadiene\_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C3 --> C3
+C4 --> C4 --> C4
+H1 --> H1 --> H1
+H2 --> H2 --> H2
+H3 --> H3 --> H3
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
 
- ```
-[cis-1-3-butadiene\_EEF00125-z\_SP] cis-1-3-butadiene\_EEF00125-z\_SP --> cis-1-3-butadiene\_SP C1 --> C1 --> C1 C2 --> C2 --> C2 H4 --> H4 --> H4 H5 --> H5 --> H5 H6 --> H6 --> H6
-```
+[cis-1-3-butadiene\_EEF00125-z\_SP] cis-1-3-butadiene\_EEF00125-z\_SP --> cis-1-3-butadiene\_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
 
- ```
 [cis-1-3-butadiene\_SP] cis-1-3-butadiene\_SP
 ```
 
-
-	- The file has a section for each final system, with a heading showing the system nickname, its "full name", and the full name of the initial system to which it is being compared, followed by a line for each atom present in the data for the final system.
-	- Each atom line has three columns separated by " --> "
-		- The first column indicates a "pointer" atom that exists in the *real* system that you want to appear in the output. It doesn't need to be present in the actual data; instead it points to the atom that it is symmetrically equivalent to in the second column
-		- The second column indicates an atom that is present in the data for the listed final system. This atom needs to be in the data, and can be pointed to by one or more pointer atoms. It then points to an atom in the initial system in the third column
-		- The third column indicates an atom present in the initial system.
-		- If an atom in the second column isn't in the final system, or an atom in the thrid column isn't in the initial system, you will be asked to fix it and try again
-	- The square-bracketed beginning of each line is a nickname you can give to the system, to make the output csv files easier to read.
-	- Note that the atoms are not shown for the initial system, "cis-1-3-butadiene\_SP," and that different final systems have different numbers of atoms. They all represent the same molecule, but some atoms were left out thanks to symmetry. Here's the same part of the file, but with changes applied:
+  * The file has a section for each final system, with a heading showing the system nickname, its "full name", and the full name of the initial system to which it is being compared, followed by a line for each atom present in the data for the final system.
+  * Each atom line has three columns separated by " --> "
+    * The first column indicates a "pointer" atom that exists in the *real* system that you want to appear in the output. It doesn't need to be present in the actual data; instead it points to the atom that it is symmetrically equivalent to in the second column
+    * The second column indicates an atom that is present in the data for the listed final system. This atom needs to be in the data, and can be pointed to by one or more pointer atoms. It then points to an atom in the initial system in the third column
+    * The third column indicates an atom present in the initial system.
+    * If an atom in the second column isn't in the final system, or an atom in the thrid column isn't in the initial system, you will be asked to fix it and try again
+    * The square-bracketed beginning of each line is a nickname you can give to the system, to make the output csv files easier to read.
+    * Note that the atoms are not shown for the initial system, "cis-1-3-butadiene\_SP," and that different final systems have different numbers of atoms. They all represent the same molecule, but some atoms were left out thanks to symmetry. Here's the same part of the file, but with changes applied:
 
 ```
 ...
-```
 
- ```
-[EEF Y] cis-1-3-butadiene\_EEF00125-y\_SP --> cis-1-3-butadiene\_SP C1 --> C1 --> C1 C2 --> C2 --> C2 C3 --> C3 --> C2 C4 --> C4 --> C1 H1 --> H1 --> H5 H2 --> H2 --> H6 H3 --> H3 --> H4 H4 --> H4 --> H4 H5 --> H5 --> H5 H6 --> H6 --> H6
-```
+[EEF Y] cis-1-3-butadiene\_EEF00125-y\_SP --> cis-1-3-butadiene\_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C3 --> C2
+C4 --> C4 --> C1
+H1 --> H1 --> H5
+H2 --> H2 --> H6
+H3 --> H3 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
 
- ```
-[EEF Z] cis-1-3-butadiene\_EEF00125-z\_SP --> cis-1-3-butadiene\_SP C1 --> C1 --> C1 C2 --> C2 --> C2 C3 --> C2 --> C2 C4 --> C1 --> C1 H1 --> H5 --> H5 H2 --> H6 --> H6 H3 --> H4 --> H4 H4 --> H4 --> H4 H5 --> H5 --> H5 H6 --> H6 --> H6
-```
+[EEF Z] cis-1-3-butadiene\_EEF00125-z\_SP --> cis-1-3-butadiene\_SP
+C1 --> C1 --> C1
+C2 --> C2 --> C2
+C3 --> C2 --> C2
+C4 --> C1 --> C1
+H1 --> H5 --> H5
+H2 --> H6 --> H6
+H3 --> H4 --> H4
+H4 --> H4 --> H4
+H5 --> H5 --> H5
+H6 --> H6 --> H6
 
- ```
 [NEF] cis-1-3-butadiene\_SP
 ```
 
 
-	- See that I've given the systems nicknames (EEF for external electric field, and NEF for no electric field).
-	- Also see that I've added extra lines in the "EEF Z" system, so that the output will have the FULL list of atoms for all systems, even though not all atoms were explicitly analyze
-	- Having made these changes and saved the file, I can press enter to prompt gbapost.py to continue
+  * See that I've given the systems nicknames (EEF for external electric field, and NEF for no electric field).
+  * Also see that I've added extra lines in the "EEF Z" system, so that the output will have the FULL list of atoms for all systems, even though not all atoms were explicitly analyze
+  * Having made these changes and saved the file, I can press enter to prompt gbapost.py to continue
 5. The atom associations will be read in and checked for logical consistency. You'll be prompted if there are errors.
 6. Now you do a similar process, but simpler, to select which condensed variables should be included in the output. Simply delete the lines for the variables you don't want, save, and press enter to prompt gbapost.py to continue
 7. Now you should find an output folder next to the input files with one csv file for each final used. It will contain an atomic basin decomposition comparison, all special gradient bundle decompositions present in the system, and all max/min basin decompositions present.
