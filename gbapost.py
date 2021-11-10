@@ -9,7 +9,8 @@ from sys import argv, exc_info
 import unicodedata
 import re
 
-
+BASIN_COMPARISON_VARLIST = ["electron density","volume","kinetic energy"]
+BASIN_COMPARISON_VARBLACKLIST = ["boundary","deformation",]
 
 def sanitize(filename):
     """Return a fairly safe version of the filename.
@@ -368,28 +369,28 @@ Press enter to continue...\n\n""")
                             # (e.g. this is a degenerate H that forms one of the C-H bonds on a C atom)
                             if make_new_bond and internal_atom_map[other_atom] == other_atom:
                                 # match the correct basin on the other_atom based on correlation of bond integrals
-                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                                 for r2k,r2v in new_regions.items():
                                     if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and other_atom in r2v and len(r2v) == 2:
-                                        rvals = [rv[av][k] + r2v[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                        rvals = [rv[av][k] + r2v[other_atom][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                                         cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
                                         cor_list.append([cor,r2k])
                                 
                             # check to see if a bond has already been made for this atom
                             # (i.e. a bond with the corresponding counterpart atom that was made in a previous iteration)
                             if make_new_bond:
-                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                                 for r2k,r2v in new_regions.items():
                                     if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and len(r2v) == 2:
                                         for a2k in r2v.keys():
                                             if "_map" not in a2k and internal_atom_map[a2k] != a2k and (internal_atom_map[a2k] == other_atom or internal_atom_map[a2k] == internal_atom_map[other_atom]):
-                                                rvals = [rv[av][k] + r2v[a2k][k] for k in rv[av].keys() if "boundary" not in k]
+                                                rvals = [rv[av][k] + r2v[a2k][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                                                 cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
                                                 cor_list.append([cor,r2k])
                             
                             if len(cor_list) > 0:
                                 cor = sorted(cor_list, key = lambda x: x[0], reverse = True)[0]
-                                if cor[0] > 0.999:
+                                if cor[0] > 0.99:
                                     new_regions[cor[1]][ak] = rv[av]
                                     new_regions[cor[1]]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
                                     make_new_bond = False
@@ -453,8 +454,8 @@ Press enter to continue...\n\n""")
             for cb2k,cb2v in systems[initial_sys]['minmax_basins'].items():
                 def_var2 = cb2k.split(' from ')[1]
                 if def_var2 == def_var1 and sv['atom_map'][a_name] == cb2k[:cb2k.find(":")] and (all(["Max " in k for k in [cb1k,cb2k]]) or  all(["Min " in k for k in [cb1k,cb2k]])):
-                    lvals = [v for k,v in cb1v.items() if "boundary" not in k and k in cb2v]
-                    rvals = [v for k,v in cb2v.items() if "boundary" not in k and k in cb1v]
+                    lvals = [v for k,v in cb1v.items() if k in cb2v and any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
+                    rvals = [v for k,v in cb2v.items() if k in cb1v and any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                     cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
                     cor_list.append([cor,cb2k])
             minmax_basin_correlations[cb1k] = sorted(cor_list, key = lambda x: x[0], reverse = True)
