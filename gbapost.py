@@ -296,127 +296,144 @@ Press enter to continue...\n\n""")
         with open(file_name1, 'r') as f:
             str2 = f.read().strip()
         
-        try:
-            num_errors = 0
-            for sys in str2.split('\n\n'):
-                lines = sys.split('\n')
-                s_nickname = lines[0][lines[0].find("[")+1:lines[0].find("]")]
-                s_name = lines[0][lines[0].find("]")+2:]
-                if len(s_name.split(' --> ')) > 1:
-                    s_name = s_name.split(' --> ')[0]
-                else:
-                    systems[initial_sys]['nickname'] = s_nickname
+#         try:
+        num_errors = 0
+        for sys in str2.split('\n\n'):
+            lines = sys.split('\n')
+            s_nickname = lines[0][lines[0].find("[")+1:lines[0].find("]")]
+            s_name = lines[0][lines[0].find("]")+2:]
+            if len(s_name.split(' --> ')) > 1:
+                s_name = s_name.split(' --> ')[0]
+            else:
+                systems[initial_sys]['nickname'] = s_nickname
+                continue
+            atom_map = {}
+            internal_atom_map = {}
+            for a in lines[1:]:
+                a123 = [ai.strip().replace(' ','') for ai in a.split(' --> ')]
+                if a123[2] not in systems[initial_sys]['atoms']:
+                    print(f"Atom {a123[0]} (points to {a123[1]} in {s_name}) then points to {a123[2]}, which is not in {initial_sys}!")
+                    num_errors += 1
                     continue
-                atom_map = {}
-                internal_atom_map = {}
-                for a in lines[1:]:
-                    a123 = [ai.strip().replace(' ','') for ai in a.split(' --> ')]
-                    if a123[2] not in systems[initial_sys]['atoms']:
-                        print(f"Atom {a123[0]} (points to {a123[1]} in {s_name}) then points to {a123[2]}, which is not in {initial_sys}!")
-                        num_errors += 1
-                        continue
-                    elif a123[1] not in systems[s_name]['atoms']:
-                        print(f"Atom {a123[0]} points to {a123[1]} which is not in {s_name}!")
-                        num_errors += 1
-                        continue
+                elif a123[1] not in systems[s_name]['atoms']:
+                    print(f"Atom {a123[0]} points to {a123[1]} which is not in {s_name}!")
+                    num_errors += 1
+                    continue
+                
+                # process pointer atoms, updating minmax basins and creating new regions as necessary.
+                # only new logical bonds will be made, as it's feasible that a ring/cage could have e.g. three pairs of the same pair of atoms.
+                # with bonds, can assume 2 atoms per interaction, so if a bond already has two atoms and both are the targets of new pointer atoms,
+                # assume those two pointers constitute a separate bond that essentially points to that of the target atoms. 
+                if a123[0] not in systems[s_name]['atoms']:
+                    systems[s_name]['atoms'][a123[0]] = systems[s_name]['atoms'][a123[1]]
+                    minmax_basins = {}
+                    # copy minmax basins for pointer atom
+                    for cbk,cbv in systems[s_name]['minmax_basins'].items():
+                        if a123[1] in cbk:
+                            minmax_basins[cbk.replace(a123[1],a123[0])] = cbv
+                    systems[s_name]['minmax_basins'].update(minmax_basins)
                     
-                    # process pointer atoms, updating minmax basins and creating new regions as necessary.
-                    # only new logical bonds will be made, as it's feasible that a ring/cage could have e.g. three pairs of the same pair of atoms.
-                    # with bonds, can assume 2 atoms per interaction, so if a bond already has two atoms and both are the targets of new pointer atoms,
-                    # assume those two pointers constitute a separate bond that essentially points to that of the target atoms. 
-                    if a123[0] not in systems[s_name]['atoms']:
-                        systems[s_name]['atoms'][a123[0]] = systems[s_name]['atoms'][a123[1]]
-                        minmax_basins = {}
-                        # copy minmax basins for pointer atom
-                        for cbk,cbv in systems[s_name]['minmax_basins'].items():
-                            if a123[1] in cbk:
-                                minmax_basins[cbk.replace(a123[1],a123[0])] = cbv
-                        systems[s_name]['minmax_basins'].update(minmax_basins)
-                        
-                    atom_map[a123[1]] = a123[2] # maps existing atom to existing atom in initial system
-                    atom_map[a123[0]] = a123[2] # maps new pointer to existing atom in initial system
-                    internal_atom_map[a123[0]] = a123[1] # maps new pointer atom to existing atom
-                    
-                systems[s_name]['atom_map'] = atom_map
+                atom_map[a123[1]] = a123[2] # maps existing atom to existing atom in initial system
+                atom_map[a123[0]] = a123[2] # maps new pointer to existing atom in initial system
+                internal_atom_map[a123[0]] = a123[1] # maps new pointer atom to existing atom
                 
-                region_map = {}
-                for rk,rv in systems[s_name]['regions'].items():
-                    for rki,rvi in systems[initial_sys]['regions'].items():
-                        if all([int(systems[s_name]['atom_map'][a] in rvi) for a in rv.keys() if "_map" not in a]):
-                            region_map[rk] = rki
-                            break
-                systems[s_name]['region_map'] = region_map
-                systems[s_name]['nickname'] = s_nickname
-                
-                
-                # update regions for pointer atom
-                new_regions = {k:v for k,v in systems[s_name]['regions'].items()}
-                for rk,rv in systems[s_name]['regions'].items():
-                    for ak,av in internal_atom_map.items():
-                        if ak != av and av in rv:
-                            if "Bond " not in rk or len(rv) <= 2:
-                                # singly bond-wedge occupied bond, or not a bond, so add pointer atom to this region
-                                new_regions[rk]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
-                                new_regions[rk][ak] = rv[av]
-                            elif "Bond " in rk and len(rv) == 3:
-                                # full bond, so need to make a new one for this pointer atom.
-                                # first check to see if a bond has already been made for this atom
-                                # (i.e. a bond with the corresponding counterpart atom that was made in a previous iteration)
-                                other_atom = [a for a in rv.keys() if a != av and "_map" not in a][0]
-                                make_new_bond = True
-                                if True or internal_atom_map[other_atom] == other_atom:
-                                    for r2k,r2v in new_regions.items():
-                                        if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and len(r2v) == 2:
-                                            for a2k in r2v.keys():
-                                                if "_map" not in a2k and (internal_atom_map[a2k] == other_atom or internal_atom_map[a2k] == internal_atom_map[other_atom]):
-                                                    new_regions[r2k][ak] = rv[av]
-                                                    new_regions[r2k]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
-                                                    make_new_bond = False
-                                                    break
-                                        if not make_new_bond:
-                                            break
-                                                
-                                    pass
-                                if make_new_bond:
-                                    def_var = rk.split(' from ')[1]
-                                    bond_nums = [int(b.split(' ')[1]) for b in (systems[s_name]['regions'] | new_regions).keys() if "Bond " in b and def_var == b.split(' from ')[1]]
-                                    if len(bond_nums) > 0:
-                                        if min(bond_nums) > 1:
-                                            bond_num = min(bond_nums) - 1
-                                        else:
-                                            bond_num = max(bond_nums) + 1
-                                    else:
-                                        bond_num = 1
-                                    bond_name = f"Bond {bond_num} " + ' '.join(rk.split(" ")[2:])
-                                        
-                                    new_regions[bond_name] = {ak:rv[av], 'minmax_basin_map':{ak:rv['minmax_basin_map'][av].replace(av,ak)}}
-                systems[s_name]['regions'] = new_regions
-                systems[s_name]['internal_atom_map'] = internal_atom_map
-                
-                # update region map for new regions
-                for r1k,r1v in systems[s_name]['regions'].items():
-                    if "_map" not in r1k and all([internal_atom_map[a] != a for a in r1v.keys() if "_map" not in a]):
-                        # found a new pointer region, so look for it's target region
-                        for r2k,r2v in systems[s_name]['regions'].items():
-                            if "_map" not in r2k and r2k != r1k and all([internal_atom_map[a] in r2v for a in r1v.keys() if "_map" not in a]):
-                                # found target region
-                                systems[s_name]['region_map'][r1k] = systems[s_name]['region_map'][r2k]
-                            
-                                    
-                                    
+            systems[s_name]['atom_map'] = atom_map
             
-            if num_errors:
-                input(f"\n\nProblem(s) found with {num_errors} atom association(s). Please fix, resave the file, and press enter to check again.")
-                systems = {k:v for k,v in systems_copy.items()}
-                with open(file_name1, 'w') as f:
-                    f.write(str1)
-        except Exception as e:
-            input(f"Problem reading the edited file: {str(e)}.\n\nLet's try that again... (ctrl-c to quit)")
-            exc_type, value, exc_traceback = exc_info()
-            print(f"{exc_type = }\n{value = }\n{exc_traceback = }")
+            region_map = {}
+            for rk,rv in systems[s_name]['regions'].items():
+                for rki,rvi in systems[initial_sys]['regions'].items():
+                    if all([int(systems[s_name]['atom_map'][a] in rvi) for a in rv.keys() if "_map" not in a]):
+                        region_map[rk] = rki
+                        break
+            systems[s_name]['region_map'] = region_map
+            systems[s_name]['nickname'] = s_nickname
+            
+            
+            # update regions for pointer atom
+            new_regions = {k:v for k,v in systems[s_name]['regions'].items()}
+            for rk,rv in systems[s_name]['regions'].items():
+                for ak,av in internal_atom_map.items():
+                    if ak != av and av in rv:
+                        if "Bond " not in rk or len(rv) <= 2:
+                            # singly bond-wedge occupied bond, or not a bond, so add pointer atom to this region
+                            new_regions[rk]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
+                            new_regions[rk][ak] = rv[av]
+                        elif "Bond " in rk and len(rv) == 3:
+                            # full bond, so need to make a new one for this pointer atom.
+                            other_atom = [a for a in rv.keys() if a != av and "_map" not in a][0]
+                            make_new_bond = True
+                            cor_list = []
+                            
+                            # check if there is an existing bond that this pointer atom belongs to
+                            # (e.g. this is a degenerate H that forms one of the C-H bonds on a C atom)
+                            if make_new_bond and internal_atom_map[other_atom] == other_atom:
+                                # match the correct basin on the other_atom based on correlation of bond integrals
+                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                for r2k,r2v in new_regions.items():
+                                    if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and other_atom in r2v and len(r2v) == 2:
+                                        rvals = [rv[av][k] + r2v[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                        cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
+                                        cor_list.append([cor,r2k])
+                                
+                            # check to see if a bond has already been made for this atom
+                            # (i.e. a bond with the corresponding counterpart atom that was made in a previous iteration)
+                            if make_new_bond:
+                                lvals = [rv[av][k] + rv[other_atom][k] for k in rv[av].keys() if "boundary" not in k]
+                                for r2k,r2v in new_regions.items():
+                                    if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and len(r2v) == 2:
+                                        for a2k in r2v.keys():
+                                            if "_map" not in a2k and internal_atom_map[a2k] != a2k and (internal_atom_map[a2k] == other_atom or internal_atom_map[a2k] == internal_atom_map[other_atom]):
+                                                rvals = [rv[av][k] + r2v[a2k][k] for k in rv[av].keys() if "boundary" not in k]
+                                                cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
+                                                cor_list.append([cor,r2k])
+                            
+                            if len(cor_list) > 0:
+                                cor = sorted(cor_list, key = lambda x: x[0], reverse = True)[0]
+                                if cor[0] > 0.999:
+                                    new_regions[cor[1]][ak] = rv[av]
+                                    new_regions[cor[1]]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
+                                    make_new_bond = False
+                                    
+                            if make_new_bond:
+                                def_var = rk.split(' from ')[1]
+                                bond_nums = [int(b.split(' ')[1]) for b in new_regions.keys() if "Bond " in b and def_var == b.split(' from ')[1]]
+                                bond_num = 1
+                                if len(bond_nums) > 0:
+                                    while bond_num <= max(bond_nums):
+                                        if bond_num not in bond_nums:
+                                            break
+                                        bond_num += 1
+
+                                bond_name = f"Bond {bond_num} " + ' '.join(rk.split(" ")[2:])
+                                    
+                                new_regions[bond_name] = {ak:rv[av], 'minmax_basin_map':{ak:rv['minmax_basin_map'][av].replace(av,ak)}}
+            systems[s_name]['regions'] = new_regions
+            systems[s_name]['internal_atom_map'] = internal_atom_map
+            
+            # update region map for new regions
+            for r1k,r1v in systems[s_name]['regions'].items():
+                if "_map" not in r1k and all([internal_atom_map[a] != a for a in r1v.keys() if "_map" not in a]):
+                    # found a new pointer region, so look for it's target region
+                    for r2k,r2v in systems[s_name]['regions'].items():
+                        if "_map" not in r2k and r2k != r1k and all([internal_atom_map[a] in r2v for a in r1v.keys() if "_map" not in a]):
+                            # found target region
+                            systems[s_name]['region_map'][r1k] = systems[s_name]['region_map'][r2k]
+                        
+                                
+                                
+        
+        if num_errors:
+            input(f"\n\nProblem(s) found with {num_errors} atom association(s). Please fix, resave the file, and press enter to check again.")
             systems = {k:v for k,v in systems_copy.items()}
             with open(file_name1, 'w') as f:
                 f.write(str1)
+#         except Exception as e:
+#             input(f"Problem reading the edited file: {str(e)}.\n\nLet's try that again... (ctrl-c to quit)")
+#             exc_type, value, exc_traceback = exc_info()
+#             print(f"{exc_type = }\n{value = }\n{exc_traceback = }")
+#             systems = {k:v for k,v in systems_copy.items()}
+#             with open(file_name1, 'w') as f:
+#                 f.write(str1)
     
     systems = {sk:sv for sk,sv in systems.items() if 'atom_map' in sv or sk == initial_sys}
     
@@ -594,14 +611,15 @@ Press enter to continue...\n\n""")
                     var_itotals = {k:0. for k in var_list.keys()}
                     var_ftotals = {k:0. for k in var_list.keys()}
                     num_regions = 0
-                    for rk in sorted(list(sv['regions'].keys()), reverse=True):
+                    region_names = sorted([[rk, f"{' — '.join([k for k in sorted(list(rv.keys())) if '_map' not in k])}" + f" {r_type.lower()}bundle"] for rk,rv in sv['regions'].items()], key = lambda x: x[1])
+                    for rk,r_name in region_names:
                         rv = sv['regions'][rk]
                         if def_var in rk and r_type in rk:
                             if num_regions == 0:
                                 f.write(f"{r_type}bundle decomposition according to {def_var}\n")
                             num_regions += 1
                             # region info
-                            r_name = f"{' — '.join([k for k in sorted(list(rv.keys())) if '_map' not in k])}" + f" {r_type.lower()}bundle"
+#                             r_name = f"{' — '.join([k for k in sorted(list(rv.keys())) if '_map' not in k])}" + f" {r_type.lower()}bundle"
                             f.write(f"{r_name},") 
                             
                             # region var totals
