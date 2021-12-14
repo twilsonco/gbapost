@@ -70,6 +70,13 @@ def is_float(s):
     except:
         return False
 
+def manhattan(a, b): # https://www.statology.org/manhattan-distance-python/
+    return sum(abs(val1-val2) for val1, val2 in zip(a,b))
+
+def compare_func(a,b):
+    return manhattan(a, b)
+    # return np.corrcoef(np.array([a, b]))[0,1]
+
 def main():
     date_time_stamp = datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
     
@@ -108,13 +115,19 @@ def main():
             s_name = s[0]['Dataset name']
             if sys == s_name:
                 for line in s:
+                    if '' in [line[k] for k in ['Dataset name', 'Atom name', 'Region name']]:
+                      continue
                     a_name = line['Atom name'].split(':')[0].replace(' ','')
                     r_name = line['Region name']
                     if r_name.replace(' ','') != a_name:
                         if 'full' not in a_name:
-                            if "Max" not in r_name and "Min" not in r_name:
+                            if "Max " not in r_name and "Min " not in r_name:
                                 if r_name not in regions:
                                     regions[r_name] = {}
+                                    regions[r_name]['minmax_basin_map'] = {}
+                                if "Max " in line['Atom name'] or "Min " in line['Atom name']:
+                                    cb_name = a_name + line['Atom name'][line['Atom name'].find(": "):]
+                                    regions[r_name]['minmax_basin_map'][a_name] = cb_name
                                 regions[r_name][a_name] = {k:(float(v) if " (with boundary error)" not in k else v) for k,v in line.items() if is_float(v) and k not in ['Dataset name', 'Atom name', 'Region name']}
                             else:
                                 r_name = r_name[:r_name.find(":")].strip().replace(' ','') + r_name[r_name.find(":"):]
@@ -131,6 +144,9 @@ def main():
             def_var1 = rk.split(' from ')[1]
             minmax_basin_map = {}
             for cb1k, cb1v in rv.items():
+                if cb1k in rv['minmax_basin_map']:
+                    minmax_basin_map[cb1k] = rv['minmax_basin_map'][cb1k]
+                    continue
                 for cb2k, cb2v in sv['minmax_basins'].items():
                     found = False
                     def_var2 = cb2k.split(' from ')[1]
@@ -141,7 +157,7 @@ def main():
                     if found:
                         minmax_basin_map[cb1k] = cb2k
                         break
-            if len(minmax_basin_map) != len(rv):
+            if len(minmax_basin_map) != len([k for k in rv.keys() if "_map" not in k]):
                 print(f"Failed to associate {cb1k} in {rk} of {sk} with its corresponding condensed max or min basin!")
             systems[sk]['regions'][rk]['minmax_basin_map'] = minmax_basin_map
     
@@ -203,7 +219,7 @@ def main():
     str1 = ''
     for k,v in systems.items():
         if k == initial_sys:
-            str1 += f"[{k}] {k}\n"
+            str1 += f"[{k}] {k}\n\n"
             continue
         else:
             str1 += f"[{k}] {k} --> {initial_sys}\n"
@@ -334,18 +350,110 @@ Press enter to continue...\n\n""")
                             minmax_basins[cbk.replace(a123[1],a123[0])] = cbv
                     systems[s_name]['minmax_basins'].update(minmax_basins)
                     
-                atom_map[a123[1]] = a123[2] # maps existing atom to existing atom in initial system
+                if a123[1] not in atom_map:
+                    atom_map[a123[1]] = a123[2] # maps existing atom to existing atom in initial system
                 atom_map[a123[0]] = a123[2] # maps new pointer to existing atom in initial system
                 internal_atom_map[a123[0]] = a123[1] # maps new pointer atom to existing atom
                 
             systems[s_name]['atom_map'] = atom_map
             
+            # first match up two-member bonds, then single atom bonds
+            single_atom_regions = []
             region_map = {}
+            minmax_basin_correlations = {}
             for rk,rv in systems[s_name]['regions'].items():
+                if len(rv) == 2:
+                    single_atom_regions.append(rk)
+                    continue
+                
+                cor_list = []
+                lvals = [sum(av[k] for ak,av in rv.items() if "_map" not in ak) for k in rv[list(rv.keys())[0]].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                 for rki,rvi in systems[initial_sys]['regions'].items():
                     if all([int(systems[s_name]['atom_map'][a] in rvi) for a in rv.keys() if "_map" not in a]):
-                        region_map[rk] = rki
+                        rvals = [sum(av[k] for ak,av in rvi.items() if "_map" not in ak) for k in rvi[list(rvi.keys())[0]].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
+                        cor = compare_func(lvals, rvals)
+                        cor_list.append([cor,rki])
+                        # region_map[rk] = rki
+                        # break
+                minmax_basin_correlations[rk] = sorted(cor_list, key = lambda x: x[0])
+            # loop over minmax_basin_correlations pairing basins with their closest matches
+            is_added = {}
+            for cb1k in minmax_basin_correlations.keys():
+                # while len(minmax_basin_correlations[cb1k]) > 0:
+                #     do_break = True
+                #     for c in minmax_basin_correlations[cb1k]:
+                #         if c[1] in is_added:
+                #             del(minmax_basin_correlations[cb1k][0])
+                #             do_break = False
+                #             break
+                #     if do_break:
+                #         break
+                if len(minmax_basin_correlations[cb1k]) < 1:
+                    continue
+                a_name = cb1k[:cb1k.find(":")]
+                def_var1 = cb1k.split(' from ')[1]
+                while len(minmax_basin_correlations[cb1k]) > 1:
+                    do_break = True
+                    # check that no other minmax_basin has a better correlation with cb1k's best match
+                    for cb2k in minmax_basin_correlations.keys():
+                        def_var2 = cb2k.split(' from ')[1]
+    #                     print(f"{cb1k = }\n{cb2k = }\n")
+                        if def_var2 == def_var1 and cb1k != cb2k and len(minmax_basin_correlations[cb2k]) > 0 and minmax_basin_correlations[cb2k][0][1] == minmax_basin_correlations[cb1k][0][1] and minmax_basin_correlations[cb2k][0][0] < minmax_basin_correlations[cb1k][0][0]:
+                            del(minmax_basin_correlations[cb1k][0])
+                            do_break = False
+                            break
+                    if do_break:
                         break
+                if len(minmax_basin_correlations[cb1k]) > 0:
+                    region_map[cb1k] = minmax_basin_correlations[cb1k][0][1]
+                    is_added[region_map[cb1k]] = True
+                    
+            
+            minmax_basin_correlations = {}
+            for rk in single_atom_regions:
+                rv = systems[s_name]['regions'][rk]
+                cor_list = []
+                lvals = [sum(av[k] for ak,av in rv.items() if "_map" not in ak) for k in rv[list(rv.keys())[0]].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
+                for rki,rvi in systems[initial_sys]['regions'].items():
+                    if all([int(systems[s_name]['atom_map'][a] in rvi) for a in rv.keys() if "_map" not in a]):
+                        rvals = [sum(av[k] for ak,av in rvi.items() if "_map" not in ak) for k in rvi[list(rvi.keys())[0]].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
+                        cor = compare_func(lvals, rvals)
+                        cor_list.append([cor,rki])
+                        # region_map[rk] = rki
+                        # break
+                minmax_basin_correlations[rk] = sorted(cor_list, key = lambda x: x[0])
+            # loop over minmax_basin_correlations pairing basins with their closest matches
+            is_added = {}
+            for cb1k in minmax_basin_correlations.keys():
+                # while len(minmax_basin_correlations[cb1k]) > 0:
+                #     do_break = True
+                #     for c in minmax_basin_correlations[cb1k]:
+                #         if c[1] in is_added:
+                #             del(minmax_basin_correlations[cb1k][0])
+                #             do_break = False
+                #             break
+                #     if do_break:
+                #         break
+                if len(minmax_basin_correlations[cb1k]) < 1:
+                    continue
+                a_name = cb1k[:cb1k.find(":")]
+                def_var1 = cb1k.split(' from ')[1]
+                while len(minmax_basin_correlations[cb1k]) > 1:
+                    do_break = True
+                    # check that no other minmax_basin has a better correlation with cb1k's best match
+                    for cb2k in minmax_basin_correlations.keys():
+                        def_var2 = cb2k.split(' from ')[1]
+    #                     print(f"{cb1k = }\n{cb2k = }\n")
+                        if def_var2 == def_var1 and cb1k != cb2k and len(minmax_basin_correlations[cb2k]) > 0 and minmax_basin_correlations[cb2k][0][1] == minmax_basin_correlations[cb1k][0][1] and minmax_basin_correlations[cb2k][0][0] < minmax_basin_correlations[cb1k][0][0]:
+                            del(minmax_basin_correlations[cb1k][0])
+                            do_break = False
+                            break
+                    if do_break:
+                        break
+                if len(minmax_basin_correlations[cb1k]) > 0:
+                    region_map[cb1k] = minmax_basin_correlations[cb1k][0][1]
+                    is_added[region_map[cb1k]] = True
+            
             systems[s_name]['region_map'] = region_map
             systems[s_name]['nickname'] = s_nickname
             
@@ -373,7 +481,7 @@ Press enter to continue...\n\n""")
                                 for r2k,r2v in new_regions.items():
                                     if "Bond " in r2k and ' '.join(rk.split(" ")[2:]) == ' '.join(r2k.split(" ")[2:]) and other_atom in r2v and len(r2v) == 2:
                                         rvals = [rv[av][k] + r2v[other_atom][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
-                                        cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
+                                        cor = compare_func(lvals, rvals)
                                         cor_list.append([cor,r2k])
                                 
                             # check to see if a bond has already been made for this atom
@@ -385,12 +493,12 @@ Press enter to continue...\n\n""")
                                         for a2k in r2v.keys():
                                             if "_map" not in a2k and internal_atom_map[a2k] != a2k and (internal_atom_map[a2k] == other_atom or internal_atom_map[a2k] == internal_atom_map[other_atom]):
                                                 rvals = [rv[av][k] + r2v[a2k][k] for k in rv[av].keys() if any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
-                                                cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
+                                                cor = compare_func(lvals, rvals)
                                                 cor_list.append([cor,r2k])
                             
                             if len(cor_list) > 0:
-                                cor = sorted(cor_list, key = lambda x: x[0], reverse = True)[0]
-                                if cor[0] > 0.99:
+                                cor = sorted(cor_list, key = lambda x: x[0])[0]
+                                if len(cor_list) == 1 or cor[0] < 100:
                                     new_regions[cor[1]][ak] = rv[av]
                                     new_regions[cor[1]]['minmax_basin_map'][ak] = rv['minmax_basin_map'][av].replace(av,ak)
                                     make_new_bond = False
@@ -447,27 +555,62 @@ Press enter to continue...\n\n""")
         if sk == initial_sys:
             continue
         minmax_basin_correlations = {}
+        minmax_basin_map = {}
+        systems[sk]['minmax_basin_map_corrcoefs'] = {}
+        is_added = {}
         for cb1k,cb1v in sv['minmax_basins'].items():
             cor_list = []
             a_name = cb1k[:cb1k.find(":")]
             def_var1 = cb1k.split(' from ')[1]
+            
+            # first see if mapped regions can be used to precicely map condensed basin
+            is_found = False
+            for rk1,rv1 in sv['regions'].items():
+                if rk1 in sv['region_map'] and "Bond " in rk1:
+                    for rcb1,rcb2 in rv1['minmax_basin_map'].items():
+                        if cb1k == rcb2:
+                            # have the condensed basin in a region; now find the corresponding condensed basin in the initial system for the corresponding region
+                            for rcbi1,rcbi2 in systems[initial_sys]['regions'][sv['region_map'][rk1]]['minmax_basin_map'].items():
+                                if rcbi1 == sv['atom_map'][a_name]:
+                                    for cb2k,cb2v in systems[initial_sys]['minmax_basins'].items():
+                                        if cb2k == rcbi2:
+                                            minmax_basin_map[cb1k] = rcbi2
+                                            is_added[minmax_basin_map[cb1k]] = True
+                                            systems[sk]['minmax_basin_map_corrcoefs'][cb1k] = 0.
+                                            is_found = True
+                                            break
+                                if is_found:
+                                    break
+                        if is_found:
+                            break
+                if is_found:
+                    break
+            
+                                            
+            
             for cb2k,cb2v in systems[initial_sys]['minmax_basins'].items():
                 def_var2 = cb2k.split(' from ')[1]
                 if def_var2 == def_var1 and sv['atom_map'][a_name] == cb2k[:cb2k.find(":")] and (all(["Max " in k for k in [cb1k,cb2k]]) or  all(["Min " in k for k in [cb1k,cb2k]])):
                     lvals = [v for k,v in cb1v.items() if k in cb2v and any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
                     rvals = [v for k,v in cb2v.items() if k in cb1v and any([v in k.lower() for v in BASIN_COMPARISON_VARLIST]) and all([v not in k.lower() for v in BASIN_COMPARISON_VARBLACKLIST])]
-                    cor = np.corrcoef(np.array([lvals, rvals]))[0,1]
+                    cor = compare_func(lvals, rvals)
                     cor_list.append([cor,cb2k])
-            minmax_basin_correlations[cb1k] = sorted(cor_list, key = lambda x: x[0], reverse = True)
+            minmax_basin_correlations[cb1k] = sorted(cor_list, key = lambda x: x[0])
         
         # loop over minmax_basin_correlations pairing basins with their closest matches
-        is_added = {}
-        minmax_basin_map = {}
-        systems[sk]['minmax_basin_map_corrcoefs'] = {}
         for cb1k in minmax_basin_correlations.keys():
-            a_name = cb1k[:cb1k.find(":")]
-            if len(minmax_basin_correlations[cb1k]) < 1:
+            # while len(minmax_basin_correlations[cb1k]) > 0:
+            #     do_break = True
+            #     for c in minmax_basin_correlations[cb1k]:
+            #         if c[1] in is_added:
+            #             del(minmax_basin_correlations[cb1k][0])
+            #             do_break = False
+            #             break
+            #     if do_break:
+            #         break
+            if cb1k in systems[sk]['minmax_basin_map_corrcoefs'] or len(minmax_basin_correlations[cb1k]) < 1:
                 continue
+            a_name = cb1k[:cb1k.find(":")]
             def_var1 = cb1k.split(' from ')[1]
             while len(minmax_basin_correlations[cb1k]) > 1:
                 do_break = True
@@ -475,7 +618,7 @@ Press enter to continue...\n\n""")
                 for cb2k in minmax_basin_correlations.keys():
                     def_var2 = cb2k.split(' from ')[1]
 #                     print(f"{cb1k = }\n{cb2k = }\n")
-                    if def_var2 == def_var1 and cb1k != cb2k and a_name == cb2k[:cb2k.find(":")] and (all(["Max " in k for k in [cb1k,cb2k]]) or  all(["Min " in k for k in [cb1k,cb2k]])) and len(minmax_basin_correlations[cb2k]) > 0 and minmax_basin_correlations[cb2k][0][1] == minmax_basin_correlations[cb1k][0][1] and minmax_basin_correlations[cb2k][0][0] > minmax_basin_correlations[cb1k][0][0]:
+                    if def_var2 == def_var1 and cb1k != cb2k and a_name == cb2k[:cb2k.find(":")] and (all(["Max " in k for k in [cb1k,cb2k]]) or  all(["Min " in k for k in [cb1k,cb2k]])) and len(minmax_basin_correlations[cb2k]) > 0 and minmax_basin_correlations[cb2k][0][1] == minmax_basin_correlations[cb1k][0][1] and minmax_basin_correlations[cb2k][0][0] < minmax_basin_correlations[cb1k][0][0]:
                         del(minmax_basin_correlations[cb1k][0])
                         do_break = False
                         break
@@ -692,9 +835,9 @@ Press enter to continue...\n\n""")
                             if def_var in lrk and lrk in sv['minmax_basin_map']:
                                 f.write(f"Lone: {lrk.replace(' from ' + def_var,'')} → {sv['minmax_basin_map'][lrk].replace(' from ' + def_var,'')} in {systems[initial_sys]['nickname']},")
                                 for var in var_list.keys():
-                                    i_tot = lrv[var]
+                                    i_tot = systems[initial_sys]['minmax_basins'][sv['minmax_basin_map'][lrk]][var]
                                     var_itotals[var] += i_tot
-                                    f_tot = systems[initial_sys]['minmax_basins'][sv['minmax_basin_map'][lrk]][var]
+                                    f_tot = lrv[var]
                                     var_ftotals[var] += f_tot
                                     diff = f_tot - i_tot
                                     percent_diff = (diff / i_tot * 100.) if i_tot != 0. else 0.
@@ -748,35 +891,29 @@ Press enter to continue...\n\n""")
                         unmapped = []
                         var_itotals = {k:0. for k in var_list.keys()}
                         var_ftotals = {k:0. for k in var_list.keys()}
+                        
+                        lines = []
                         for cb1k in sorted(list(sv['minmax_basins'].keys())):
                             cb1v = sv['minmax_basins'][cb1k]
                             if def_var not in cb1k or m not in cb1k:
                                 continue
                             if cb1k in sv['minmax_basin_map']:
-                                f.write(f"{cb1k.replace(' from ' + def_var,'')} → {sv['minmax_basin_map'][cb1k].replace(' from ' + def_var,'')} in {systems[initial_sys]['nickname']} ({sv['minmax_basin_map_corrcoefs'][cb1k]:.8f}),")
+                                line = f"{sv['minmax_basin_map'][cb1k].replace(' from ' + def_var,'')} in {systems[initial_sys]['nickname']} ← {cb1k.replace(' from ' + def_var,'')} in {sv['nickname']} ({sv['minmax_basin_map_corrcoefs'][cb1k]:.8f}),"
                                 for var in var_list.keys():
-                                    i_tot = cb1v[var]
+                                    i_tot = systems[initial_sys]['minmax_basins'][sv['minmax_basin_map'][cb1k]][var]
                                     var_itotals[var] += i_tot
-                                    f_tot = systems[initial_sys]['minmax_basins'][sv['minmax_basin_map'][cb1k]][var]
+                                    f_tot = cb1v[var]
                                     var_ftotals[var] += f_tot
                                     diff = f_tot - i_tot
                                     percent_diff = (diff / i_tot * 100.) if i_tot != 0. else 0.
-                                    f.write(f"{i_tot:.8f},{f_tot:.8f},{diff:.8f},{percent_diff:.8f},")
-                                f.write('\n')
+                                    line += f"{i_tot:.8f},{f_tot:.8f},{diff:.8f},{percent_diff:.8f},"
+                                lines.append(line)
                             else:
                                 unmapped.append(cb1k)
                         
-                        if len(unmapped) > 0:
-                            for cb1k in unmapped:
-                                if m not in cb1k:
-                                    continue
-                                f.write(f"UNMAPPED: {cb1k.replace(' from ' + def_var,'')},")
-                                for var in var_list.keys():
-                                    f_tot = sv['minmax_basins'][cb1k][var]
-                                    var_ftotals[var] += f_tot
-                                    f.write(f",{f_tot:.8f},,,")
-                                f.write('\n')
-                        
+                        for aline in sorted(lines, key = lambda x : x.split(",")[0]):
+                            f.write(aline + "\n")
+                                
                         if len(sv['initial_sys_unmapped_minmax_basins']) > 0:
                             for cb1k in sorted(list(sv['initial_sys_unmapped_minmax_basins'].keys())):
                                 cb1v = sv['initial_sys_unmapped_minmax_basins'][cb1k]
@@ -788,6 +925,17 @@ Press enter to continue...\n\n""")
                                         f.write(f"{i_tot:.8f},,,,")
                                     f.write('\n')
                         
+                        if len(unmapped) > 0:
+                            for cb1k in unmapped:
+                                if m not in cb1k:
+                                    continue
+                                f.write(f"UNMAPPED: {cb1k.replace(' from ' + def_var,'')},")
+                                for var in var_list.keys():
+                                    f_tot = sv['minmax_basins'][cb1k][var]
+                                    var_ftotals[var] += f_tot
+                                    f.write(f",{f_tot:.8f},,,")
+                                f.write('\n')
+                                
                         # the total line
                         f.write("Total,")
                         for var in var_list.keys():
@@ -808,7 +956,7 @@ Press enter to continue...\n\n""")
     
 if __name__ == "__main__":
 #     try:
-    inpath = argv[1] if len(argv) > 1 else "/Volumes/twilson/Tecplot/StorageWorkspace/2021_QTAIM-book-chapter/a/integration data 1/cis-1-3-butadiene"
+    inpath = argv[1] if len(argv) > 1 else "/Volumes/twilson/Tecplot/StorageWorkspace/2021_QTAIM-book-chapter/a/integration data 4/complex/combined"
     os.chdir(inpath)
     main()
 #     except Exception as e:
