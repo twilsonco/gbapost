@@ -102,6 +102,7 @@ H6 --> H6 --> H6
   * Having made these changes and saved the file, I can press enter to prompt gbapost.py to continue
 5. The atom associations will be read in and checked for logical consistency. You'll be prompted if there are errors.
 6. Now you do a similar process, but simpler, to select which condensed variables should be included in the output. Simply delete the lines for the variables you don't want, save, and press enter to prompt gbapost.py to continue
+7. One last time to select which plots are produced, then output is generated
 7. Now you should find an output folder next to the input files with one csv file for each final used. It will contain an atomic basin decomposition comparison, all special gradient bundle decompositions present in the system, and all max/min basin decompositions present.
 	- For example, the bond/ring/cage bundles in a system can be defined according to the condensed density, the condensed kinetic energy density, or the condensed volume (among others). This tool will give the bond decomposition, the ring decomposition, and the cage decomposition, and according to each defining variable. So you get the bonds according to the condensed density, and another decomposition with the bonds according to the condensed volume, etc.
 
