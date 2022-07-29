@@ -32,9 +32,17 @@ import unicodedata
 
 import re
 
+
+
+
 USE_R2_ADJ = False
 INCLUDE_DIFF = False
+P_VALUE_IN_REGRESSION_PLOTS = False
+REGRESSION_PLOTS_TITLE_INSIDE_PLOT = True
 
+
+
+regression_plot_title_y = 0.87 if REGRESSION_PLOTS_TITLE_INSIDE_PLOT else (1.11 if P_VALUE_IN_REGRESSION_PLOTS else 1.03)
 os.environ['PATH'] += ":/Library/TeX/texbin/"
 plt.rcParams['text.usetex'] = True
 
@@ -44,6 +52,8 @@ OUTPUT_FORMAT = '.pdf'
 # blue = (58/255,117/255,135/255)
 red = (224/255,117/255,71/255)
 blue = (101/255,151/255,226/255)
+
+
 
 BASIN_COMPARISON_VARLIST = ["electron density","volume","kinetic energy","density"]
 BASIN_COMPARISON_VARBLACKLIST = ["boundary","deformation",]
@@ -258,6 +268,10 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
     if rsqr < cutoff_r_squared:
         return
     
+    different_colors = False
+    if len(colors) > 1:
+        different_colors = any(i != j for i,j in zip(colors[:-1],colors[1:]))
+    
     # Plot outputs
     fig, ax = plt.subplots()
     if len(colors) == len(Y) and len(shapes) == len(Y) and len(sizes) == len(Y):
@@ -265,8 +279,8 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
             mi = shapes[i]
             xi = X[i]
             yi = Y[i]
-            ci = 'dimgrey'#colors[i]
-            si = 100#sizes[i]
+            ci = colors[i] if different_colors else 'dimgrey'
+            si = sizes[i] if different_colors else 100
             if len(labels) == Y.size:
                 ax.scatter(xi,yi, marker=mi, color=ci, edgecolor='k', s=si, label=unicode_to_latex(labels[i]))
             else:
@@ -278,10 +292,17 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
                 ax.annotate(unicode_to_latex(l),(X[i], Y[i]))
         
     ax.plot(X, y_pred, color=blue, linewidth=3)
-    if " from " in titlestr:
-        ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj, p_val[0], p_val[1]), y=0.87, pad=18, fontdict={'fontsize': 18})
+    if P_VALUE_IN_REGRESSION_PLOTS:
+        if " from " in titlestr:
+            ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y + 0.16, pad=18, fontdict={'fontsize': 18})
+        else:
+            ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y, pad=18, fontdict={'fontsize': 18})
     else:
-        ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj, p_val[0], p_val[1]), y=0.87, pad=18, fontdict={'fontsize': 18})
+        if " from " in titlestr:
+            ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj), y=regression_plot_title_y + 0.16, pad=18, fontdict={'fontsize': 18})
+        else:
+            ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj), y=regression_plot_title_y, pad=18, fontdict={'fontsize': 18})
+
     # ax.set_xticks(())
     if xlabel:
         ax.set_xlabel(unicode_to_latex(xlabel), fontdict={'fontsize': 16})
@@ -2267,10 +2288,6 @@ bar chart of topological cage property correlations to system property ---  all 
             var_list = old_var_list
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2316,16 +2333,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
                     lc=list(zip(legend_atom_colors,legend_atom_names))
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr="atomic basins", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendcolors=lc, legendshapes=sc, filedir=sub_dir_name)
             
         elif plot_type == "linear regression of system property vs atomic basin properties ---  per element":  # BAD atomic basins per element basis
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2377,16 +2395,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
                     lc=list(zip(legend_atom_colors,legend_atom_names))
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{atom_name} atomic basins", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == "linear regression of system property vs atomic basin properties ---  per atom":  # MODERATE atomic basins    per atom basis
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2436,16 +2455,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{cur_atom} atomic basins", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
     
         elif plot_type == "linear regression of system property vs bond bundle properties ---  per bond bundle":  # GOOD per individual bond bundle
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2496,16 +2516,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond bundle", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
                     
         elif plot_type == "linear regression of system property vs bond bundle properties ---  per bond bundle type":  # BAD per bond bundle type
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2560,16 +2581,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{rk1} bond bundles", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
     
         elif plot_type == "linear regression of system property vs bond wedge properties":  # GOOD per individual bond wedge
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2625,16 +2647,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond wedge", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
     
         elif plot_type == "linear regression of system property vs condensed minimum basin properties":  # GOOD per individual condensed minimum basin
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2690,17 +2713,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(region_markers,region_names))
+                    sc=list(zip(region_markers,region_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} condensed minimum basin", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == "linear regression of system property vs topological cage properties":  # GOOD per topological cage
             var_list = old_var_list
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2751,7 +2774,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} Topological {rk1}", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
                     
         #######  Regressions of regional property differences between perturbed and original system
@@ -2760,10 +2788,6 @@ bar chart of topological cage property correlations to system property ---  all 
             # per atom basis
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2827,17 +2851,18 @@ bar chart of topological cage property correlations to system property ---  all 
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
                     lc=list(zip(legend_atom_colors,legend_atom_names))
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{systems[initial_sys]['atom_nicknames'][atom_name]} atomic basin property difference", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
             
         elif plot_type == 'linear regression of system property vs bond bundle property difference in "final" vs "initial" systems':  # VERY GOOD bond bundle differences to initial system
             # per atom basis
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2897,16 +2922,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond bundle property difference", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == 'linear regression of system property vs bond wedge property difference in "final" vs "initial" systems':  # VERY GOOD individual bond wedge differences
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -2962,16 +2988,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name}\nbond wedge property difference", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == 'linear regression of system property vs condensed minimum basin property difference in "final" vs "initial" systems':  # GOOD individual minimum basin differences
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3026,7 +3053,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(region_markers,region_names))
+                    sc=list(zip(region_markers,region_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name}\ncondensed minimum basin property difference", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         
@@ -3035,10 +3067,6 @@ bar chart of topological cage property correlations to system property ---  all 
         elif plot_type == 'linear regression of system property vs bond bundle bond wedge abs property differences':  # POOR bond bundle bond wedge abs difference
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3099,16 +3127,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond bundle abs bond wedge difference", xlabel="∆ " + selected_vars[i], ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
     
         elif plot_type == 'linear regression of system property vs atomic basin bond wedge property standard deviation':  # VERY GOOD atomic basin bond wedge property standard deviation
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3159,16 +3188,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond wedge standard deviation", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == 'linear regression of system property vs atomic basin standard deviation of bond wedge property differences between "final" and "initial" systems':  # POOR atomic basin bond wedge property difference standard deviation
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3221,16 +3251,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} bond wedge difference standard deviation", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == 'linear regression of system property vs atomic basin condensed minimum basin property standard deviation':  # GOOD atomic basin min basin property standard deviation
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3283,16 +3314,17 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} min basin standard deviation", xlabel=f"{var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         elif plot_type == 'linear regression of system property vs atomic basin standard deviation of condensed minimum basin property differences between "final" and "initial" systems':  # MODERATE atomic basin min basin property difference standard deviation
             
             sub_dir_name = os.path.join(os.getcwd(),dir_name,plot_type)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3345,7 +3377,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 # regress each variable one at a time
                 for i in range(len(selected_vars)):
                     Xi = X[:,i].reshape(-1, 1)
-                    sc=list(zip(system_markers,system_names))
+                    sc=list(zip(system_markers,system_names))                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     LinearRegression(Xi, Y, titlestr=f"{region_name} min basin difference standard deviation", xlabel=f"∆ {var_nickname_full[selected_vars[i]]} ({var_nickname[selected_vars[i]]})", ylabel=f"{energy_nickname_full} ({energy_nickname})", yunits = f" [{energy_units}]", colors=colors, shapes=shapes, sizes=sizes, legendshapes=sc, filedir=sub_dir_name)
         
         ####################################
@@ -3358,10 +3395,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3383,7 +3416,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                
+                                                
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Atomic basins\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3393,10 +3431,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3408,13 +3442,13 @@ bar chart of topological cage property correlations to system property ---  all 
                 # collect v values for each atom in each system
                 xd = {}
                 for ak1,av1 in systems[initial_sys]['regions'].items():
-                    if "Bond " not in ak1 or len(av1) != 3:
+                    if "Bond " not in ak1 or len(av1) < 3:
                         continue
                     region_name = f"{'-'.join([k for k in sorted([systems[initial_sys]['atom_nicknames'][k] for k in av1.keys() if '_map' not in k]) if '_map' not in k])}"
                     xd[region_name] = []
                     for sk,sv in systems.items():
                         for ak2,av2 in sv['regions'].items():
-                            if (sk == initial_sys and ak2 == ak1) or (sk != initial_sys and rk in sv['region_map'] and sv['region_map'][ak2] == ak1):
+                            if (sk == initial_sys and ak2 == ak1) or (sk != initial_sys and ak2 in sv['region_map'] and sv['region_map'][ak2] == ak1):
                                 xd[region_name].append(sum([av[v] for ak,av in av2.items() if "_map" not in ak]))
                                 break
                 if len(xd) == 0:
@@ -3422,7 +3456,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Bond bundles\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3432,10 +3471,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3466,7 +3501,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Bond wedges\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3476,10 +3516,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3507,7 +3543,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Condensed minimum basins\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3517,10 +3558,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3546,7 +3583,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Topological cages\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3558,10 +3600,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3588,7 +3626,12 @@ bar chart of topological cage property correlations to system property ---  all 
                     
                 if len(xd) == 0:
                     continue
-                if do_run:
+                if do_run:                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     x = np.array(list(xd.values())).transpose()
                     CorrelationMatrix1(x, titlestr=f"Atomic basin differences\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3598,10 +3641,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3634,6 +3673,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 if len(xd) == 0:
                     continue
                 if do_run:
+                                
+                    try:
+                        os.mkdir(sub_dir_name)
+                    except:
+                        pass
+            
                     x = np.array(list(xd.values())).transpose()
                     CorrelationMatrix1(x, titlestr=f"Bond bundle differences\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3643,10 +3688,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3676,7 +3717,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Bond wedge differences\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
     
@@ -3686,10 +3732,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3716,7 +3758,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                                
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Condensed minimum basin differences\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3728,10 +3775,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3758,7 +3801,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 mode_size = mode([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != mode_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                
+                            
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Atomic basin bond wedge stdev\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3768,10 +3816,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3798,7 +3842,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 mode_size = mode([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != mode_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                
+                            
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Atomic basin bond wedge difference stdev\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -3808,10 +3857,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3839,7 +3884,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 x_pop = {xk:len(xv) != mode_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
                 
-                x = np.array(list(xd.values())).transpose()
+                x = np.array(list(xd.values())).transpose()            
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 CorrelationMatrix1(x, titlestr=f"Atomic basin min basin stdev\n{var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
         elif plot_type == 'correlation diagrams of atomic basin standard deviation of condensed minimum basin property differences between "final" and "initial" systems ---  one diagram per property':
@@ -3848,10 +3898,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3880,6 +3926,12 @@ bar chart of topological cage property correlations to system property ---  all 
                 [xd.pop(k) for k,v in x_pop.items() if v]
                 
                 x = np.array(list(xd.values())).transpose()
+            
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
                 CorrelationMatrix1(x, titlestr=f"Atomic basin min basin difference stdev\n∆ {var_nickname_full[v]} ({var_nickname[v]}) correlation", labels=list(xd.keys()), filedir=sub_dir_name)
         
         
@@ -3893,10 +3945,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -3958,8 +4006,14 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
                 if not INCLUDE_DIFF: xr_diff = {}
+            
                 try:
-                    CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Atomic basin condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
+                try:
+                    # CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Atomic basin condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
                     CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Atomic basin condensed property correlation\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=False)
                 except Exception as e:
                     print(e) 
@@ -3968,10 +4022,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4034,8 +4084,14 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
                 if not INCLUDE_DIFF: xr_diff = {}
+            
                 try:
-                    CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond bundle condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
+                try:
+                    # CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond bundle condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
                     CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond bundle condensed property correlation\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=False)
                 except Exception as e:
                     print(e) 
@@ -4044,10 +4100,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4114,8 +4166,14 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
                 if not INCLUDE_DIFF: xr_diff = {}
+            
                 try:
-                    CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond wedge condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
+                try:
+                    # CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond wedge condensed property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
                     CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Bond wedge condensed property correlation\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=False)
                 except Exception as e:
                     print(e) 
@@ -4124,10 +4182,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4191,8 +4245,14 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
                 if not INCLUDE_DIFF: xr_diff = {}
+            
                 try:
-                    CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Condensed minimum basin property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
+                try:
+                    # CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Condensed minimum basin property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
                     CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Condensed minimum basin property correlation\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=False)
                 except Exception as e:
                     print(e) 
@@ -4201,10 +4261,6 @@ bar chart of topological cage property correlations to system property ---  all 
         elif plot_type == 'bar charts of topological cage property correlations to system property ---  one chart per property':  #  topo cages
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4267,8 +4323,14 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
                 if not INCLUDE_DIFF: xr_diff = {}
+            
                 try:
-                    CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Topological cage property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
+            
+                try:
+                    # CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Topological cage property correlation ∆\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=True)
                     CorrelationBarChart(list(xr.values()), x_over=list(xr_diff.values()), titlestr=f"Topological cage property correlation\n{energy_nickname_full} ({energy_nickname}) vs {var_nickname_full[v]} ({var_nickname[v]})", filedir=sub_dir_name, labels=list(xr.keys()), ylabel=energy_nickname, xlabel=var_nickname[v], x_over_suffix=" (∆)", x_over_sort=False)
                 except Exception as e:
                     print(e)
@@ -4278,10 +4340,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4348,8 +4406,14 @@ bar chart of topological cage property correlations to system property ---  all 
             
             if not INCLUDE_DIFF: var_over_vals = None
             rev_var.reverse()
+            
             try:
-                CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Atomic basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v1] for v1 in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
+                os.mkdir(sub_dir_name)
+            except:
+                pass
+            
+            try:
+                # CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Atomic basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v1] for v1 in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
                 CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Atomic basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname})", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v1] for v1 in rev_var], x_over_suffix=" (∆)", x_over_sort=False)
             except Exception as e:
                 print(e)
@@ -4359,11 +4423,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4433,8 +4492,14 @@ bar chart of topological cage property correlations to system property ---  all 
                 
             if not INCLUDE_DIFF: var_over_vals = None
             rev_var.reverse()
+            
             try:
-                CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond bundles: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
+                os.mkdir(sub_dir_name)
+            except:
+                pass
+            
+            try:
+                # CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond bundles: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
                 CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond bundles: Condensed property correlations to {energy_nickname_full} ({energy_nickname})", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=False)
             except Exception as e:
                 print(e)
@@ -4443,11 +4508,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4522,8 +4582,14 @@ bar chart of topological cage property correlations to system property ---  all 
                 
             if not INCLUDE_DIFF: var_over_vals = None
             rev_var.reverse()
+            
             try:
-                CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond wedges: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
+                os.mkdir(sub_dir_name)
+            except:
+                pass
+            
+            try:
+                # CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond wedges: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
                 CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Bond wedges: Condensed property correlations to {energy_nickname_full} ({energy_nickname})", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=False)
             except Exception as e:
                 print(e)
@@ -4532,11 +4598,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4607,8 +4668,15 @@ bar chart of topological cage property correlations to system property ---  all 
                 
             if not INCLUDE_DIFF: var_over_vals = None
             rev_var.reverse()
+            
             try:
-                CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Condensed minimum basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
+                os.mkdir(sub_dir_name)
+            except:
+                pass
+            
+            
+            try:
+                # CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Condensed minimum basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
                 CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Condensed minimum basins: Condensed property correlations to {energy_nickname_full} ({energy_nickname})", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=False)
             except Exception as e:
                 print(e)
@@ -4626,11 +4694,6 @@ bar chart of topological cage property correlations to system property ---  all 
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
             
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
-            
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
             # one correlation matrix per variable
@@ -4699,8 +4762,14 @@ bar chart of topological cage property correlations to system property ---  all 
                 
             if not INCLUDE_DIFF: var_over_vals = None
             rev_var.reverse()
+            
             try:
-                CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Topological cages: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
+                os.mkdir(sub_dir_name)
+            except:
+                pass
+            
+            try:
+                # CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Topological cages: Condensed property correlations to {energy_nickname_full} ({energy_nickname}) ∆", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=True)
                 CorrelationMultiVarBarChart(var_vals, x_over=var_over_vals, titlestr=f"Topological cages: Condensed property correlations to {energy_nickname_full} ({energy_nickname})", filedir=sub_dir_name, labels_in=list(xr.keys()), ylabel=energy_nickname, xlabels=[var_nickname[v] for v in rev_var], x_over_suffix=" (∆)", x_over_sort=False)
             except Exception as e:
                 print(e)
@@ -4720,10 +4789,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4747,7 +4812,10 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Variable correlation\n{a_name} atomic basins", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -4759,10 +4827,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4788,7 +4852,10 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Variable correlation\n{region_name} bond bundles", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -4798,10 +4865,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4832,8 +4895,12 @@ bar chart of topological cage property correlations to system property ---  all 
                     continue
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
-                [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                [xd.pop(k) for k,v in x_pop.items() if v]                
+                
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Variable correlation\n{region_name} bond wedges", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -4843,11 +4910,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
-            
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
             # one correlation matrix per variable
@@ -4875,7 +4937,10 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
-                    
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Variable correlation\n{region_name} minimum basins", labels=list(xd.keys()), filedir=sub_dir_name)
         
@@ -4887,10 +4952,6 @@ bar chart of topological cage property correlations to system property ---  all 
             
             sub_dir_base = plot_type
             sub_dir_name = os.path.join(os.getcwd(), dir_name, sub_dir_base)
-            try:
-                os.mkdir(sub_dir_name)
-            except:
-                pass
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
@@ -4916,6 +4977,10 @@ bar chart of topological cage property correlations to system property ---  all 
                 max_size = max([len(x) for x in xd.values()])
                 x_pop = {xk:len(xv) != max_size for xk,xv in xd.items()}
                 [xd.pop(k) for k,v in x_pop.items() if v]
+                try:
+                    os.mkdir(sub_dir_name)
+                except:
+                    pass
                     
                 x = np.array(list(xd.values())).transpose()
                 CorrelationMatrix1(x, titlestr=f"Variable correlation\n{region_name} Topological {ak1}", labels=list(xd.keys()), filedir=sub_dir_name)
