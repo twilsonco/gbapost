@@ -1,6 +1,7 @@
 #!/usr/local/bin/python3
 
 import csv, os
+from collections import defaultdict
 from datetime import datetime
 import numpy as np
 from sys import argv, exc_info
@@ -37,7 +38,7 @@ import re
 
 USE_R2_ADJ = False
 INCLUDE_DIFF = False
-P_VALUE_IN_REGRESSION_PLOTS = False
+P_VALUE_IN_REGRESSION_PLOTS = True
 REGRESSION_PLOTS_TITLE_INSIDE_PLOT = True
 
 
@@ -56,7 +57,7 @@ blue = (101/255,151/255,226/255)
 
 
 BASIN_COMPARISON_VARLIST = ["electron density","volume","kinetic energy","density"]
-BASIN_COMPARISON_VARBLACKLIST = ["boundary","deformation",]
+BASIN_COMPARISON_VARBLACKLIST = ["boundary","deformation","valence","bader",]
 
 CLEAR = ''.join(['\n']*100)
 
@@ -218,7 +219,7 @@ def p_value_from_regression(X, y):
     t_b = params/ s_b
     p_val =[2*(1-stats.t.cdf(np.abs(i),(len(new_X)-len(new_X[0])))) for i in t_b]
     p_val = np.round(p_val,3)
-    return p_val
+    return p_val, lm.intercept_, lm.coef_
 
 def summarize_fit(X,y):
     import pandas as pd , numpy as np
@@ -255,10 +256,10 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
     rsqr = r2_score(Y,y_pred)
     
     try:
-        p_val = p_value_from_regression(X, Y)
+        p_val, intercept, slope = p_value_from_regression(X, Y)
         fit_summary = summarize_fit(X, Y)
     except Exception as e:
-        p_val = None
+        p_val, intercept, slope = None, None, None
         fit_summary = ""
         print(e)
     
@@ -294,12 +295,13 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
     ax.plot(X, y_pred, color=blue, linewidth=3)
     if P_VALUE_IN_REGRESSION_PLOTS:
         if " from " in titlestr:
-            ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y + 0.16, pad=18, fontdict={'fontsize': 18})
+            ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' (elem')]), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y-0.02, pad=18, fontdict={'fontsize': 18}, bbox=dict(facecolor='white', edgecolor='w', alpha=0.5)) # simpler printing for figures in papers
+            # ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y-0.02, pad=18, fontdict={'fontsize': 16}, bbox=dict(facecolor='white', edgecolor='w', alpha=0.5))
         else:
-            ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y, pad=18, fontdict={'fontsize': 18})
+            ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})\\(p$_{{b}}$ = {:2.4f}; p$_{{m}}$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj, p_val[0], p_val[1]), y=regression_plot_title_y-0.02, pad=18, fontdict={'fontsize': 18}, bbox=dict(facecolor='white', edgecolor='w', alpha=0.5))
     else:
         if " from " in titlestr:
-            ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj), y=regression_plot_title_y + 0.16, pad=18, fontdict={'fontsize': 18})
+            ax.set_title(r'\noindent {}\\{}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})'.format(unicode_to_latex(titlestr[:titlestr.find(' from ')]), unicode_to_latex("from " + titlestr[titlestr.find(' from ')+6:]), rsqr, rsqr_adj), y=regression_plot_title_y + 0.16, pad=18, fontdict={'fontsize': 16})
         else:
             ax.set_title(r'\noindent {}\\(R$^2$ = {:2.4f}; R$_{{\rm{{adj}}}}^2$ = {:2.4f})'.format(unicode_to_latex(titlestr), rsqr, rsqr_adj), y=regression_plot_title_y, pad=18, fontdict={'fontsize': 18})
 
@@ -327,9 +329,10 @@ def LinearRegression(X, Y, titlestr="", labels=[], xlabel=None, ylabel=None, yun
         legend_elements = [Line2D([0], [0], marker=c[0], color=(1,1,1,0.3), markerfacecolor='dimgrey', markeredgecolor='k', markersize=10, label=c[1]) for c in ls]
         if len(legendcolors):
             legend_elements += [Line2D([],[],linestyle='')] + [Line2D([0], [0], marker='o', color='w', markerfacecolor=c[0], markeredgecolor='k', markersize=10, label=c[1]) for c in lc]
-        ax.legend(handles=legend_elements, loc='right', fontsize=14)
+        # ax.legend(handles=legend_elements, loc='right', fontsize=14)
     else:
-        ax.legend(fontsize=13)
+        # ax.legend(fontsize=13)
+        pass
     
     if filedir:
         # filepath = os.path.join(filedir,sanitize(f"{rsqr_adj if USE_R2_ADJ else rsqr:2.4f}_{titlestr}-{ylabel}_vs_{xlabel}{OUTPUT_FORMAT}"))
@@ -820,16 +823,16 @@ def main():
         return False
     
     # get list of systems
-    systems = {}
+    systems = defaultdict(lambda: "")
     for s in all_input_files:
         s_name = s[0]['Dataset name']
-        systems[s_name] = {}
-    
+        systems[s_name] = defaultdict(lambda: "")
+
     # get regions and their atomic components in each system
     for sys in systems.keys():
-        atoms = {}
-        regions = {}
-        minmax_basins = {}
+        atoms = defaultdict(lambda: "")
+        regions = defaultdict(lambda: "")
+        minmax_basins = defaultdict(lambda: "")
         for s in all_input_files:
             s_name = s[0]['Dataset name']
             if sys == s_name:
@@ -842,8 +845,8 @@ def main():
                         if 'full' not in a_name:
                             if "Max " not in r_name and "Min " not in r_name:
                                 if r_name not in regions:
-                                    regions[r_name] = {}
-                                    regions[r_name]['minmax_basin_map'] = {}
+                                    regions[r_name] = defaultdict(lambda: "")
+                                    regions[r_name]['minmax_basin_map'] = defaultdict(lambda: "")
                                 if "Max " in line['Atom name'] or "Min " in line['Atom name']:
                                     cb_name = a_name + line['Atom name'][line['Atom name'].find(": "):]
                                     regions[r_name]['minmax_basin_map'][a_name] = cb_name
@@ -863,7 +866,7 @@ def main():
             if "Cage " in rk:
                 continue
             def_var1 = rk.split(' from ')[1]
-            minmax_basin_map = {}
+            minmax_basin_map = defaultdict(lambda: "")
             for cb1k, cb1v in rv.items():
                 if cb1k in rv['minmax_basin_map']:
                     minmax_basin_map[cb1k] = rv['minmax_basin_map'][cb1k]
@@ -897,7 +900,7 @@ def main():
             systems[sk]['atoms'][ak]['lone_minmax_basins'] = lone_minmax_basins
         
         # determine the sgbs composure of min/max or mixed
-        sgb_types = {}
+        sgb_types = defaultdict(lambda: "")
         for rk,rv in sv['regions'].items():
             if "Cage " in rk:
                 continue
@@ -1148,7 +1151,7 @@ Press enter to continue...\n\n""")
                     continue
                 
                 systems[s_name]['energy'] = s_energy
-                atom_nicknames = {}
+                atom_nicknames = defaultdict(lambda: "")
                 for a in lines[1:]:
                     atom_nickname = a[a.find("[")+1:a.find("]")].strip()
                     atom_name = a[a.find(']')+1:].strip()
@@ -1156,8 +1159,8 @@ Press enter to continue...\n\n""")
                 systems[s_name]['atom_nicknames'] = atom_nicknames
                 systems[s_name]['atom_map'] = {k:k for k in systems[s_name]['atoms'].keys()}
                 continue
-            atom_map = {}
-            internal_atom_map = {}
+            atom_map = defaultdict(lambda: "")
+            internal_atom_map = defaultdict(lambda: "")
             for a in lines[1:]:
                 a123 = [ai.strip().replace(' ','') for ai in a.split(' --> ')]
                 if a123[2] not in systems[initial_sys]['atoms']:
@@ -1175,7 +1178,7 @@ Press enter to continue...\n\n""")
                 # assume those two pointers constitute a separate bond that essentially points to that of the target atoms. 
                 if a123[0] not in systems[s_name]['atoms']:
                     systems[s_name]['atoms'][a123[0]] = systems[s_name]['atoms'][a123[1]]
-                    minmax_basins = {}
+                    minmax_basins = defaultdict(lambda: "")
                     # copy minmax basins for pointer atom
                     for cbk,cbv in systems[s_name]['minmax_basins'].items():
                         if a123[1] in cbk:
@@ -1188,11 +1191,15 @@ Press enter to continue...\n\n""")
                 internal_atom_map[a123[0]] = a123[1] # maps new pointer atom to existing atom
                 
             systems[s_name]['atom_map'] = atom_map
+            atoms = defaultdict(lambda: "")
+            for ak in atom_map.keys():
+                atoms[ak] = systems[s_name]['atoms'][ak]
+            systems[s_name]['atoms'] = atoms
             
             # first match up two-member bonds, then single atom bonds
             single_atom_regions = []
-            region_map = {}
-            minmax_basin_correlations = {}
+            region_map = defaultdict(lambda: "")
+            minmax_basin_correlations = defaultdict(lambda: "")
             for rk,rv in systems[s_name]['regions'].items():
                 if len(rv) == 2: # map and one atom, are the 2 regions
                     single_atom_regions.append(rk)
@@ -1243,7 +1250,7 @@ Press enter to continue...\n\n""")
             region_map = {rk:rv[0][1] for rk,rv in minmax_basin_correlations.items() if len(rv) > 0}
             systems[s_name]['region_map_differences'] = {rk:rv[0][0] for rk,rv in minmax_basin_correlations.items() if len(rv) > 0}
             
-            minmax_basin_correlations = {}
+            minmax_basin_correlations = defaultdict(lambda: "")
             for rk in single_atom_regions:
                 rv = systems[s_name]['regions'][rk]
                 cor_list = []
@@ -1298,7 +1305,7 @@ Press enter to continue...\n\n""")
             region_map.update({rk:rv[0][1] for rk,rv in minmax_basin_correlations.items() if len(rv) > 0})
             systems[s_name]['region_map_differences'].update({rk:rv[0][0] for rk,rv in minmax_basin_correlations.items() if len(rv) > 0})
             
-        #     minmax_basin_correlations = {}
+        #     minmax_basin_correlations = defaultdict(lambda: "")
         #     for rk in single_atom_regions:
         #         if "Cage " in rk:
         #             rv = systems[s_name]['regions'][rk]
@@ -1332,7 +1339,7 @@ Press enter to continue...\n\n""")
         #     if False: #len(col_strs) > 1 and len(col_strs) != len(row_strs):
         #         print(f"Different number of regions on initial vs final system!")
         #                     # loop over minmax_basin_correlations pairing basins with their closest matches
-        #         is_added = {}
+        #         is_added = defaultdict(lambda: "")
         #         for cb1k in minmax_basin_correlations.keys():
         #             # while len(minmax_basin_correlations[cb1k]) > 0:
         #             #     do_break = True
@@ -1487,10 +1494,10 @@ Press enter to continue...\n\n""")
     for sk,sv in systems.items():
         if sk == initial_sys:
             continue
-        minmax_basin_correlations = {}
-        minmax_basin_map = {}
-        systems[sk]['minmax_basin_map_corrcoefs'] = {}
-        is_added = {}
+        minmax_basin_correlations = defaultdict(lambda: "")
+        minmax_basin_map = defaultdict(lambda: "")
+        systems[sk]['minmax_basin_map_corrcoefs'] = defaultdict(lambda: "")
+        is_added = defaultdict(lambda: "")
         for cb1k,cb1v in sv['minmax_basins'].items():
             cor_list = []
             a_name = cb1k[:cb1k.find(":")]
@@ -1638,7 +1645,7 @@ Press enter to continue...\n\n""")
         
     
     # reverse map of initial system minmax basins pointing to final system minmax basins
-    reverse_minmax_basin_map = {}
+    reverse_minmax_basin_map = defaultdict(lambda: "")
     for cb1k,cb1v in systems[initial_sys]['minmax_basins'].items():
         reverse_minmax_basin_map[cb1k] = []
         for s2k,s2v in systems.items():
@@ -1661,7 +1668,7 @@ Press enter to continue...\n\n""")
         
         
     # map min-min basins to bond bundles
-    max_basin_to_bond_bundle_map = {}
+    max_basin_to_bond_bundle_map = defaultdict(lambda: "")
     for rk,rv in systems[initial_sys]['regions'].items():
         if "Bond " in rk and len(rv) == 3:
             region_name = f"{'-'.join([k for k in sorted([systems[initial_sys]['atom_nicknames'][k] for k in rv.keys() if '_map' not in k]) if '_map' not in k])}"
@@ -1689,8 +1696,8 @@ Press enter to continue...\n\n""")
     
     os.system(f"open {file_name1}")
     
-    var_nickname = {}
-    var_nickname_full = {}
+    var_nickname = defaultdict(lambda: "")
+    var_nickname_full = defaultdict(lambda: "")
     
     input("Once you've removed any unwanted variables, save the file, return to this window and then press enter. (note that you can also copy-paste the contents of a previous variable name file if you've already done this before for these systems)\n")
         
@@ -1774,21 +1781,28 @@ Press enter to continue...\n\n""")
                         f.write(f"{ik1},") 
                         av = sv['atoms'][ak]
                         for var in var_list:
-                            i_val = systems[initial_sys]['atoms'][sv['atom_map'][ak]][var]
-                            f_val = av[var]
-                            diff = f_val - i_val
-                            percent_diff = (diff / i_val * 100.) if i_val != 0. else 0.
-                            f.write(f"{i_val:.8f},{f_val:.8f},{diff:.8f},{percent_diff:.8f},")
-                            system_diff_vals[sk]['atoms'][ak][diff_func(var)] = diff
+                            try:
+                                i_val = systems[initial_sys]['atoms'][sv['atom_map'][ak]][var]
+                                f_val = av[var]
+                                diff = f_val - i_val
+                                percent_diff = (diff / i_val * 100.) if i_val != 0. else 0.
+                                f.write(f"{i_val:.8f},{f_val:.8f},{diff:.8f},{percent_diff:.8f},")
+                                system_diff_vals[sk]['atoms'][ak][diff_func(var)] = diff
+                            except:
+                                f.write(",,,,")
+                                system_diff_vals[sk]['atoms'][ak][diff_func(var)] = 0.
                         f.write('\n')
                     # the total line
                     f.write("Total,")
                     for var in var_list:
-                        i_tot = sum([systems[initial_sys]['atoms'][sv['atom_map'][ak]][var] for ak in sv['atoms'].keys()])
-                        f_tot = sum([sv['atoms'][ak][var] for ak in sv['atoms'].keys()])
-                        diff = f_tot - i_tot
-                        percent_diff = (diff / i_tot * 100.) if i_tot != 0. else 0.
-                        f.write(f"{i_tot:.8f},{f_tot:.8f},{diff:.8f},{percent_diff:.8f},")
+                        try:
+                            i_tot = sum([systems[initial_sys]['atoms'][sv['atom_map'][ak]][var] for ak in sv['atoms'].keys()])
+                            f_tot = sum([sv['atoms'][ak][var] for ak in sv['atoms'].keys()])
+                            diff = f_tot - i_tot
+                            percent_diff = (diff / i_tot * 100.) if i_tot != 0. else 0.
+                            f.write(f"{i_tot:.8f},{f_tot:.8f},{diff:.8f},{percent_diff:.8f},")
+                        except:
+                            f.write(",,,,")
                     f.write('\n')
                     
                 output_atomic_basin_decomposition()
@@ -1866,7 +1880,7 @@ Press enter to continue...\n\n""")
                         # For bond bundle partitioning, it's _usually_ all max basins, so we can include all the non-bonded max basins to finish it off.
                         # Rather than assume, however, we'll check that the regions are all max or min condensed basins
                         ismin, ismax = [all([t == tt for r,t in sv['region_types'].items() if "Bond" in r]) for tt in [SGB_CONDENSED_BASIN_TYPE.MIN, SGB_CONDENSED_BASIN_TYPE.MAX]]
-                        lone_regions = {}
+                        lone_regions = defaultdict(lambda: "")
                         if ismin:
                             for ak,av in sv['atoms'].items():
                                 for cb2k in av['lone_minmax_basins']:
@@ -2291,7 +2305,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             x = []
             y = []
             names = []
@@ -2348,7 +2362,7 @@ bar chart of topological cage property correlations to system property ---  all 
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
             legend_atom_names = sorted(list({''.join([i for i in ak[:ak.find(":")] if not i.isdigit()]) for ak in [ak for ak in sv['atoms'] for sv in systems.values()]}), key=lambda x:element(x).atomic_number)
-            system_names = list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             for atom_name in legend_atom_names:
                 x = []
@@ -2409,7 +2423,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for ak,av in sv['atoms'].items() for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             for ak1 in systems[initial_sys]['atoms'].keys():
@@ -2469,7 +2483,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             for rk1,rv1 in systems[initial_sys]['regions'].items():
@@ -2530,7 +2544,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             # get list of bond types
@@ -2595,7 +2609,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             for rk1,rv1 in systems[initial_sys]['minmax_basins'].items():
@@ -2661,7 +2675,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             system_markers = [markers[i % len(markers)] for i in range(len(system_names))]
             
             for rk1,rv1 in systems[initial_sys]['minmax_basins'].items():
@@ -2727,7 +2741,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             for rk1,rv1 in systems[initial_sys]['regions'].items():
@@ -2791,7 +2805,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             
             systems = system_diff_vals
             var_list = diff_var_list
@@ -2866,7 +2880,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             
             systems = system_diff_vals
             
@@ -2936,7 +2950,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             
             var_list = diff_var_list
             
@@ -3002,7 +3016,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             system_markers = [markers[system_names_full.index(i) % len(markers)] for i in system_names]
             
             var_list = diff_var_list
@@ -3070,7 +3084,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             var_list = old_var_list
             
@@ -3141,7 +3155,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             var_list = old_var_list
             
             for rk1,rv1 in systems[initial_sys]['atoms'].items():
@@ -3202,7 +3216,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             system_markers = [markers[system_names_full.index(i) % len(markers)] for i in system_names]
             
             var_list = diff_var_list
@@ -3265,7 +3279,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items()})# if sk != initial_sys}.keys())
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items()}))# if sk != initial_sys}.keys())
             
             
             var_list = old_var_list
@@ -3328,7 +3342,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             print(f"\n\nGenerating plots in {sub_dir_name}...")
             
-            system_names = list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys})
+            system_names = sorted(list({sv['nickname'] for sk,sv in systems.items() if sk != initial_sys}))
             system_markers = [markers[system_names_full.index(i) % len(markers)] for i in system_names]
             
             var_list = diff_var_list
@@ -3404,7 +3418,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3440,7 +3454,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Bond " not in ak1 or len(av1) < 3:
                         continue
@@ -3480,7 +3494,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Max " not in ak1:
                         continue
@@ -3525,7 +3539,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Min " not in ak1:
                         continue
@@ -3567,7 +3581,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Cage " not in ak1:
                         continue
@@ -3608,7 +3622,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3649,7 +3663,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Bond " not in ak1 or len(av1) != 3:
                         continue
@@ -3696,7 +3710,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Max " not in ak1:
                         continue
@@ -3740,7 +3754,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Min " not in ak1:
                         continue
@@ -3784,7 +3798,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3825,7 +3839,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3866,7 +3880,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3907,7 +3921,7 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3954,10 +3968,10 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -3985,7 +3999,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -3994,7 +4008,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4005,7 +4019,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
-                if not INCLUDE_DIFF: xr_diff = {}
+                if not INCLUDE_DIFF: xr_diff = defaultdict(lambda: "")
             
                 try:
                     os.mkdir(sub_dir_name)
@@ -4031,10 +4045,10 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Bond " not in ak1 or len(av1) != 3:
                         continue
@@ -4064,7 +4078,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4073,7 +4087,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4083,7 +4097,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     coef = regr.coef_
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
-                if not INCLUDE_DIFF: xr_diff = {}
+                if not INCLUDE_DIFF: xr_diff = defaultdict(lambda: "")
             
                 try:
                     os.mkdir(sub_dir_name)
@@ -4109,10 +4123,10 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Max " not in ak1:
                         continue
@@ -4146,7 +4160,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4155,7 +4169,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4165,7 +4179,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     coef = regr.coef_
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
-                if not INCLUDE_DIFF: xr_diff = {}
+                if not INCLUDE_DIFF: xr_diff = defaultdict(lambda: "")
             
                 try:
                     os.mkdir(sub_dir_name)
@@ -4191,10 +4205,10 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Min " not in ak1:
                         continue
@@ -4225,7 +4239,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4234,7 +4248,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4244,7 +4258,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     coef = regr.coef_
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
-                if not INCLUDE_DIFF: xr_diff = {}
+                if not INCLUDE_DIFF: xr_diff = defaultdict(lambda: "")
             
                 try:
                     os.mkdir(sub_dir_name)
@@ -4270,10 +4284,10 @@ bar chart of topological cage property correlations to system property ---  all 
             
             for v in var_list:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Cage " not in ak1:
                         continue
@@ -4303,7 +4317,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4312,7 +4326,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4322,7 +4336,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     coef = regr.coef_
                     xr_diff[xk] = r2_func(xi,xe_diff[xk]) * np.sign(coef[0])
                 
-                if not INCLUDE_DIFF: xr_diff = {}
+                if not INCLUDE_DIFF: xr_diff = defaultdict(lambda: "")
             
                 try:
                     os.mkdir(sub_dir_name)
@@ -4351,10 +4365,10 @@ bar chart of topological cage property correlations to system property ---  all 
             rev_var = list(var_list)
             for v in rev_var:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1 in systems[initial_sys]['atoms'].keys():
                     a_name = systems[initial_sys]['atom_nicknames'][ak1]
                     xd[a_name] = []
@@ -4382,7 +4396,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4391,7 +4405,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4434,10 +4448,10 @@ bar chart of topological cage property correlations to system property ---  all 
             rev_var = list(var_list)
             for v in rev_var:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Bond " not in ak1 or len(av1) != 3:
                         continue
@@ -4468,7 +4482,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4477,7 +4491,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4519,10 +4533,10 @@ bar chart of topological cage property correlations to system property ---  all 
             rev_var = list(var_list)
             for v in rev_var:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Max " not in ak1:
                         continue
@@ -4557,7 +4571,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4566,7 +4580,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4609,10 +4623,10 @@ bar chart of topological cage property correlations to system property ---  all 
             rev_var = list(var_list)
             for v in rev_var:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['minmax_basins'].items():
                     if "Min " not in ak1:
                         continue
@@ -4644,7 +4658,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4653,7 +4667,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4704,10 +4718,10 @@ bar chart of topological cage property correlations to system property ---  all 
             rev_var = list(var_list)
             for v in rev_var:
                 # collect v values for each atom in each system
-                xd = {}
-                xd_diff = {}
-                xe = {}
-                xe_diff = {}
+                xd = defaultdict(lambda: "")
+                xd_diff = defaultdict(lambda: "")
+                xe = defaultdict(lambda: "")
+                xe_diff = defaultdict(lambda: "")
                 for ak1,av1 in systems[initial_sys]['regions'].items():
                     if "Cage " not in ak1:
                         continue
@@ -4738,7 +4752,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 [(xd_diff.pop(k),xe_diff.pop(k)) for k,b in x_pop.items() if b and k in xd_diff]
                 
                 # get fits
-                xr = {}
+                xr = defaultdict(lambda: "")
                 for xk,xv in xd.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4747,7 +4761,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     rsqr = r2_score(xe[xk],y_pred)
                     coef = regr.coef_
                     xr[xk] = r2_func(xi,xe[xk]) * np.sign(coef[0])
-                xr_diff = {}
+                xr_diff = defaultdict(lambda: "")
                 for xk,xv in xd_diff.items():
                     regr = linear_model.LinearRegression()
                     xi = np.array(xv).reshape(-1, 1)
@@ -4798,7 +4812,7 @@ bar chart of topological cage property correlations to system property ---  all 
             for ak1 in systems[initial_sys]['atoms'].keys():
                 a_name = systems[initial_sys]['atom_nicknames'][ak1]
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for v in var_list:
                     vn = var_nickname[v]
                     xd[vn] = []
@@ -4838,7 +4852,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     continue
                 region_name = f"{'-'.join([k for k in sorted([systems[initial_sys]['atom_nicknames'][k] for k in av1.keys() if '_map' not in k]) if '_map' not in k])}"
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for v in var_list:
                     vn = var_nickname[v]
                     xd[vn] = []
@@ -4881,7 +4895,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 else:
                     region_name = f"{a_name} Max {ak1[ak1.find('('):ak1.find(')')+1]}"
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for v in var_list:
                     vn = var_nickname[v]
                     xd[vn] = []
@@ -4922,7 +4936,7 @@ bar chart of topological cage property correlations to system property ---  all 
                 region_name = f"{a_name} Min {ak1[ak1.find('('):ak1.find(')')+1]}"
             
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for v in var_list:
                     vn = var_nickname[v]
                     xd[vn] = []
@@ -4963,7 +4977,7 @@ bar chart of topological cage property correlations to system property ---  all 
                     continue
                 region_name = f"{'-'.join([k for k in sorted([systems[initial_sys]['atom_nicknames'][k] for k in av1.keys() if '_map' not in k]) if '_map' not in k])}"
                 # collect v values for each atom in each system
-                xd = {}
+                xd = defaultdict(lambda: "")
                 for v in var_list:
                     vn = var_nickname[v]
                     xd[vn] = []
